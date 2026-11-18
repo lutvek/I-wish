@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Image, PanResponder, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { formatPrice } from '../lib/store';
 import type { Product } from '../lib/types';
@@ -12,14 +12,18 @@ type Props = {
 export function SwipeCard({ product, onSwipe }: Props) {
   const { width } = useWindowDimensions();
   const threshold = Math.min(width * 0.25, 160);
-  const pan = useRef(new Animated.ValueXY()).current;
+  const [pan] = useState(() => new Animated.ValueXY());
 
   // Senaste callback utan att bygga om PanResponder vid varje render.
   const onSwipeRef = useRef(onSwipe);
-  onSwipeRef.current = onSwipe;
+  useEffect(() => {
+    onSwipeRef.current = onSwipe;
+  }, [onSwipe]);
 
   const responder = useMemo(
     () =>
+      // Refen läses bara i gesthanterarna (händelser), inte under rendering.
+      // eslint-disable-next-line react-hooks/refs
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 8,
         onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),

@@ -19,5 +19,12 @@ Skanna QR-koden med appen **Expo Go** på mobilen eller surfplattan.
 
 ```bash
 npm run typecheck
+npx expo lint
 npm test
+```
+
+Testa produktläsaren mot riktiga butikssidor (kräver Playwright med Chromium):
+
+```bash
+npm run live-check
 ```

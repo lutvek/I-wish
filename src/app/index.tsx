@@ -13,8 +13,11 @@ export default function SwipeScreen() {
   const products = useMemo(() => productsFromCatalog(settings.sources, catalog), [settings.sources, catalog]);
 
   // seenIds läses via ref så att kön inte blandas om efter varje swipe.
+  // Uppdateras i en effekt som körs före ombyggnaden av kön nedan.
   const seenRef = useRef(seenIds);
-  seenRef.current = seenIds;
+  useEffect(() => {
+    seenRef.current = seenIds;
+  }, [seenIds]);
 
   // Bygg om kön när produkter eller filter ändras, men behåll kortet som visas.
   useEffect(() => {

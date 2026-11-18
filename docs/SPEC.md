@@ -41,10 +41,20 @@ gamla produkterna.
 
 ### Testat
 
+`npm run live-check` kör appens läsare mot riktiga sidor (listan finns i
+`scripts/live-check.ts`). Senaste körningen:
+
 | Sida | Resultat |
 | --- | --- |
-| clasohlson.com, kategorisidor (Leksaker, Experiment, Byggleksaker, Barnkläder) | ✅ ca 18 produkter per sida, rätt namn/pris/bild/länk |
+| clasohlson.com – Leksaker, Byggleksaker | ✅ 16–18 produkter per sida |
+| lekia.se – Byggsatser, Dockor, Spel | ✅ 150 produkter per sida (appens maxgräns) |
+| toyspace.se – Byggklossar, Dockor, Spel | ✅ 40 produkter per sida |
 | hm.com | ⚠️ Svarar "Access Denied" till automatiserade testwebbläsare. Måste provas i appen på en riktig telefon. |
+
+Varje butik har också en förenklad kopia av sina produktkort i
+`src/lib/__fixtures__/` som `npm test` kör, så att kända fallgropar inte kommer
+tillbaka: varukorgspaneler med pris och bild, etiketter som "Kampanj - 20%" i
+produktlänken, överstrukna ordinarie priser och "Du sparar"-belopp.
 
 ### Begränsningar
 

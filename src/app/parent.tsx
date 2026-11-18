@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAppState } from '../lib/store';
 import type { Source } from '../lib/types';
 
 /** Enkel föräldraspärr: ett mattetal som små barn inte klarar. */
 function ParentGate({ onPass }: { onPass: () => void }) {
-  const [a, b] = useMemo(() => [6 + Math.floor(Math.random() * 7), 3 + Math.floor(Math.random() * 7)], []);
+  const [[a, b]] = useState(() => [6 + Math.floor(Math.random() * 7), 3 + Math.floor(Math.random() * 7)]);
   const [answer, setAnswer] = useState('');
   const [wrong, setWrong] = useState(false);
 

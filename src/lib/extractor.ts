@@ -56,6 +56,9 @@ function __iwishExtract(doc, pageUrl) {
     text = String(text || '');
     while ((m = re.exec(text))) {
       if (!m[1] && !m[4] && m[3] !== '-') continue;
+      var before = text.slice(Math.max(0, m.index - 20), m.index);
+      var after = text.slice(re.lastIndex, re.lastIndex + 20);
+      if (/spar|save|rabatt|tidigare|ord\.? ?pris|ordinarie/i.test(before) || /^\s*(fr\u00e5n fri frakt|kvar till|till fri frakt)/i.test(after)) continue;
       var n = toNumber(m[2], m[3]);
       if (n > 0 && n < 1000000 && (best === null || n < best)) best = n;
     }
@@ -153,20 +156,21 @@ function __iwishExtract(doc, pageUrl) {
   function notPrice(t) { return !!t && t.length > 1 && parsePrice(t) === null && !/^[\d\s.,:\-]+$/.test(t); }
   function sameProduct(link, url) { var h = abs(link.getAttribute('href')); return h && h.split('#')[0] === url; }
 
-  // Produktnamnet i ett kort. Rubriker och produktlänkens text går före klasser
-  // som "name", eftersom t.ex. kategorinamn ofta också har "name" i klassen.
+  // Produktnamnet i ett kort, i den här ordningen: rubrik, element med "name"/
+  // "title" i klassen, produktlänkens text. Länktexten kommer sist eftersom den
+  // ofta också innehåller etiketter som "Kampanj - 20%" eller "Bästsäljare".
   function titleIn(card, url, img) {
     var i, t, nodes = card.querySelectorAll('h1, h2, h3, h4, h5, h6, [role="heading"]');
     for (i = 0; i < nodes.length; i++) { t = textOf(nodes[i]); if (notPrice(t)) return t; }
-    var links = card.querySelectorAll('a[href]');
-    for (i = 0; i < links.length; i++) {
-      if (sameProduct(links[i], url)) { t = textOf(links[i]); if (notPrice(t)) return t; }
-    }
     nodes = card.querySelectorAll('[class*="title" i], [class*="name" i], [data-testid*="title" i], [data-testid*="name" i]');
     for (i = 0; i < nodes.length; i++) {
       var cls = String(nodes[i].getAttribute('class') || '') + ' ' + String(nodes[i].getAttribute('data-testid') || '');
-      if (/categor|brand|vendor|tag|badge/i.test(cls)) continue;
+      if (/categor|brand|vendor|tag|badge|label/i.test(cls)) continue;
       t = textOf(nodes[i]); if (notPrice(t)) return t;
+    }
+    var links = card.querySelectorAll('a[href]');
+    for (i = 0; i < links.length; i++) {
+      if (sameProduct(links[i], url)) { t = textOf(links[i]); if (notPrice(t)) return t; }
     }
     for (i = 0; i < links.length; i++) {
       if (sameProduct(links[i], url)) {
@@ -182,30 +186,47 @@ function __iwishExtract(doc, pageUrl) {
     var links = card.querySelectorAll('a[href]');
     var i, h;
     for (i = 0; i < links.length; i++) {
-      if (links[i].querySelector('img')) { h = abs(links[i].getAttribute('href')); if (h && siteOf(h) === pageSite) return h.split('#')[0]; }
+      if (links[i].querySelector('img')) { h = abs(links[i].getAttribute('href')); if (h && siteOf(h) === pageSite && looksLikeProductLink(h)) return h.split('#')[0]; }
     }
     for (i = 0; i < links.length; i++) {
       if (links[i].closest('h1, h2, h3, h4, h5, h6, [role="heading"]') || links[i].querySelector('h1, h2, h3, h4, h5, h6')) {
-        h = abs(links[i].getAttribute('href')); if (h && siteOf(h) === pageSite) return h.split('#')[0];
+        h = abs(links[i].getAttribute('href')); if (h && siteOf(h) === pageSite && looksLikeProductLink(h)) return h.split('#')[0];
       }
     }
     return fallback;
   }
 
-  // Om priset står utan valuta ("199,90"): leta i element vars klass innehåller
-  // "price", men hoppa över gamla/ordinarie priser.
+  // Gamla/ordinarie priser och "du sparar"-belopp ska inte räknas som pris.
+  var NOT_CURRENT_PRICE = /old|original|was|before|regular|ordinarie|tidigare|compare|strike|line-through|save|saving|spar|percent/i;
+  function isNotCurrentPrice(n, card) {
+    for (var e = n; e && e !== card; e = e.parentElement) {
+      if (/^(DEL|S)$/i.test(e.nodeName)) return true;
+      var cls = String(e.getAttribute('class') || '') + ' ' + String(e.getAttribute('data-testid') || '') + ' ' + String(e.getAttribute('id') || '');
+      if (NOT_CURRENT_PRICE.test(cls)) return true;
+    }
+    return false;
+  }
+
+  // Pris från element vars klass innehåller "price" (fungerar även när valuta
+  // saknas, t.ex. "199,90"). Används i första hand; annars letas pris i texten.
   function priceFromPriceElements(card) {
     var nodes = card.querySelectorAll('[class*="price" i], [data-testid*="price" i], [itemprop="price"]');
     var best = null;
     for (var i = 0; i < nodes.length; i++) {
       var n = nodes[i];
-      var cls = String(n.getAttribute('class') || '') + ' ' + String(n.getAttribute('data-testid') || '');
-      if (/old|original|was|before|regular|ordinarie|tidigare|compare|strike/i.test(cls)) continue;
-      if (n.closest && n.closest('del, s')) continue;
+      if (isNotCurrentPrice(n, card)) continue;
       var v = priceValue(n.getAttribute('content') || textOf(n));
       if (v !== null && (best === null || v < best)) best = v;
     }
     return best;
+  }
+
+  // Länkar till startsidan, varukorg, kassa, konto m.m. är aldrig produkter.
+  function looksLikeProductLink(href) {
+    try {
+      var path = new URL(href).pathname;
+      return path.length > 1 && !/kassa|checkout|cart|varukorg|kundvagn|login|logga-in|konto|account|mina-sidor|wishlist|onskelista/i.test(path);
+    } catch (e) { return false; }
   }
 
   var cards = [];
@@ -215,15 +236,15 @@ function __iwishExtract(doc, pageUrl) {
     var href = abs(a.getAttribute('href'));
     if (!href || siteOf(href) !== pageSite) continue;
     var key = href.split('#')[0];
-    if (key === pageNoHash || seen[key]) continue;
+    if (key === pageNoHash || seen[key] || !looksLikeProductLink(href)) continue;
 
     var el = a;
     for (var depth = 0; el && depth < 7; depth++) {
       if (el.querySelectorAll && productLinkWithImage(el) > 1) break; // nått rutnätet
       var img = el.querySelector ? el.querySelector('img') : null;
       if (img) {
-        var price = parsePrice(textOf(el));
-        if (price === null) price = priceFromPriceElements(el);
+        var price = priceFromPriceElements(el);
+        if (price === null) price = parsePrice(textOf(el));
         if (price !== null) {
           if (cards.indexOf(el) < 0) {
             cards.push(el);

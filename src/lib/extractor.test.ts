@@ -49,3 +49,25 @@ test('handles prices without currency, old prices and category links inside card
     ],
   );
 });
+
+test('lekia-like page: ignores cart drawer, badges in links and struck-through prices', () => {
+  const r = run('lekia-like.html', 'https://www.lekia.se/leksaker/spel');
+  assert.deepEqual(
+    r.products.map((p) => [p.title, p.price, p.productUrl]),
+    [
+      ['Kulbana med hiss 236 delar', 399, 'https://www.lekia.se/leksaker/spel/kulbana-med-hiss-236-st'],
+      ['BRIO Labyrint', 299, 'https://www.lekia.se/leksaker/spel/brio-labyrint'],
+    ],
+  );
+});
+
+test('toyspace-like page: name from name element, campaign price, not old price or savings', () => {
+  const r = run('toyspace-like.html', 'https://toyspace.se/spel');
+  assert.deepEqual(
+    r.products.map((p) => [p.title, p.price, p.imageUrl]),
+    [
+      ['2-i-1 bordfotboll och bordshockey', 473, 'https://toyspace.se/media/bordsfotboll.webp'],
+      ['Hitster Battle of the Generations', 368, 'https://toyspace.se/media/hitster.jpg'],
+    ],
+  );
+});
