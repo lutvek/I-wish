@@ -1,39 +1,44 @@
 import { Link, Stack } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SwipeCard } from '../components/SwipeCard';
-import { buildDeck } from '../lib/filter';
-import { fetchSelectedProducts } from '../lib/sources';
+import { buildDeck, productsFromCatalog } from '../lib/filter';
 import { useAppState } from '../lib/store';
 import type { Product } from '../lib/types';
 
 export default function SwipeScreen() {
-  const { loaded, settings, seenIds, wishlist, swipe, resetSeen } = useAppState();
-  const [deck, setDeck] = useState<Product[] | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
+  const { loaded, settings, catalog, seenIds, wishlist, fetchingId, nextToFetch, swipe, resetSeen } = useAppState();
+  const [deck, setDeck] = useState<Product[]>([]);
+
+  const products = useMemo(() => productsFromCatalog(settings.sources, catalog), [settings.sources, catalog]);
 
   // seenIds läses via ref så att kön inte blandas om efter varje swipe.
   const seenRef = useRef(seenIds);
   seenRef.current = seenIds;
 
+  // Bygg om kön när produkter eller filter ändras, men behåll kortet som visas.
   useEffect(() => {
-    if (!loaded) return;
-    let cancelled = false;
-    setDeck(null);
-    fetchSelectedProducts(settings).then((products) => {
-      if (!cancelled) setDeck(buildDeck(products, settings, new Set(seenRef.current)));
+    setDeck((prev) => {
+      const fresh = buildDeck(products, settings, new Set(seenRef.current));
+      const current = prev[0];
+      const keep = current && fresh.find((p) => p.id === current.id);
+      return keep ? [keep, ...fresh.filter((p) => p.id !== keep.id)] : fresh;
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [loaded, settings, reloadToken]);
+  }, [products, settings]);
 
-  const current = deck?.[0];
+  const current = deck[0];
+  const loading = !loaded || ((!!fetchingId || !!nextToFetch) && deck.length === 0);
 
   const handleSwipe = (wanted: boolean) => {
     if (!current) return;
     swipe(current, wanted);
-    setDeck((d) => (d ? d.slice(1) : d));
+    setDeck((d) => d.slice(1));
+  };
+
+  const restart = () => {
+    seenRef.current = [];
+    resetSeen();
+    setDeck(buildDeck(products, settings, new Set()));
   };
 
   return (
@@ -58,21 +63,23 @@ export default function SwipeScreen() {
       />
 
       <View style={styles.cardArea}>
-        {!loaded || deck === null ? (
-          <ActivityIndicator size="large" color="#6b3fd4" />
-        ) : current ? (
+        {current ? (
           <SwipeCard key={current.id} product={current} onSwipe={handleSwipe} />
+        ) : loading ? (
+          <View style={styles.empty}>
+            <ActivityIndicator size="large" color="#6b3fd4" />
+            <Text style={styles.emptyText}>Hämtar saker från butikerna…</Text>
+          </View>
+        ) : settings.sources.length === 0 ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>Inga butiker än</Text>
+            <Text style={styles.emptyText}>Be en förälder trycka på ⚙️ och lägga till sidor från butiker.</Text>
+          </View>
         ) : (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>Slut på saker att titta på! 🎉</Text>
-            <Text style={styles.emptyText}>Be en förälder ändra inställningarna, eller börja om från början.</Text>
-            <Pressable
-              style={styles.resetBtn}
-              onPress={() => {
-                resetSeen();
-                setReloadToken((t) => t + 1);
-              }}
-            >
+            <Text style={styles.emptyText}>Be en förälder lägga till fler sidor, eller börja om från början.</Text>
+            <Pressable style={styles.resetBtn} onPress={restart}>
               <Text style={styles.resetText}>Börja om</Text>
             </Pressable>
           </View>

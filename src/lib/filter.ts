@@ -1,18 +1,48 @@
-import type { Product, Settings } from './types';
+import type { CatalogEntry, Product, Settings, Source } from './types';
 
-export const categoryKey = (storeId: string, categoryId: string) => `${storeId}:${categoryId}`;
-
-/** Vilka kategorier som är valda för en viss butik. */
-export function categoriesForStore(settings: Settings, storeId: string): string[] {
-  const prefix = `${storeId}:`;
-  return settings.categoryKeys.filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
+/** Hittar en webbadress i inklistrad text (t.ex. "Kolla här: https://…"). Lägger till https:// vid behov. */
+export function parseSourceUrl(input: string): string | null {
+  const text = input.trim();
+  const match = text.match(/https?:\/\/[^\s<>"']+/i);
+  let candidate = match ? match[0] : text;
+  if (!/^https?:\/\//i.test(candidate)) {
+    if (!/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(candidate)) return null;
+    candidate = `https://${candidate}`;
+  }
+  try {
+    const url = new URL(candidate);
+    if (!url.hostname.includes('.')) return null;
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
-/** Sant om produkten uppfyller föräldrarnas filter. */
+/** "https://www2.hm.com/sv_se/barn.html" → "hm.com" */
+export function siteName(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\d*\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/** Kopplar ihop källorna med deras senast hämtade produkter. */
+export function productsFromCatalog(sources: readonly Source[], catalog: Record<string, CatalogEntry>): Product[] {
+  return sources.flatMap((source) =>
+    (catalog[source.id]?.products ?? []).map((p) => ({
+      ...p,
+      id: `${source.id}|${p.productUrl}`,
+      sourceId: source.id,
+      storeName: source.site,
+    })),
+  );
+}
+
 export function matchesSettings(product: Product, settings: Settings): boolean {
   return (
-    settings.storeIds.includes(product.storeId) &&
-    settings.categoryKeys.includes(categoryKey(product.storeId, product.categoryId)) &&
+    settings.sources.some((s) => s.id === product.sourceId) &&
     product.price >= settings.minPrice &&
     product.price <= settings.maxPrice
   );
@@ -29,8 +59,9 @@ export function shuffle<T>(items: readonly T[], random: () => number = Math.rand
 }
 
 /**
- * Bygger kön av produkter att visa: bara de som matchar filtret, inte redan
- * swipade, i slumpmässig ordning blandat över alla valda butiker.
+ * Kön av produkter att visa: bara de som matchar filtret och inte redan swipats,
+ * i slumpmässig ordning blandat över alla källor. Samma produkt (samma länk) från
+ * två källor visas bara en gång.
  */
 export function buildDeck(
   products: readonly Product[],
@@ -40,7 +71,14 @@ export function buildDeck(
 ): Product[] {
   const unique = new Map<string, Product>();
   for (const p of products) {
-    if (!seenIds.has(p.id) && matchesSettings(p, settings)) unique.set(p.id, p);
+    if (!seenIds.has(p.id) && !unique.has(p.productUrl) && matchesSettings(p, settings)) unique.set(p.productUrl, p);
   }
   return shuffle([...unique.values()], random);
+}
+
+/** Hur länge hämtade produkter räknas som färska. */
+export const CATALOG_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+export function needsRefresh(entry: CatalogEntry | undefined, now: number): boolean {
+  return !entry || now - entry.fetchedAt > CATALOG_MAX_AGE_MS;
 }

@@ -1,39 +1,51 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildDeck, matchesSettings, shuffle } from './filter.ts';
-import type { Product, Settings } from './types.ts';
+import { buildDeck, matchesSettings, parseSourceUrl, productsFromCatalog, shuffle, siteName } from './filter.ts';
+import type { Product, Settings, Source } from './types.ts';
 
-const p = (id: string, storeId: string, categoryId: string, price: number): Product => ({
-  id,
-  storeId,
-  storeName: storeId,
-  categoryId,
-  title: id,
+const src = (id: string): Source => ({ id, url: `https://${id}.se/`, site: `${id}.se`, addedAt: 0 });
+
+const p = (sourceId: string, url: string, price: number): Product => ({
+  id: `${sourceId}|${url}`,
+  sourceId,
+  storeName: sourceId,
+  title: url,
   price,
-  currency: 'SEK',
   imageUrl: '',
-  productUrl: '',
+  productUrl: url,
 });
 
-const settings: Settings = {
-  storeIds: ['a', 'b'],
-  categoryKeys: ['a:toys', 'b:books'],
-  minPrice: 100,
-  maxPrice: 300,
-};
+const settings: Settings = { sources: [src('a'), src('b')], minPrice: 100, maxPrice: 300 };
 
-test('matchesSettings checks store, category and price range (inclusive)', () => {
-  assert.equal(matchesSettings(p('1', 'a', 'toys', 100), settings), true);
-  assert.equal(matchesSettings(p('2', 'a', 'toys', 300), settings), true);
-  assert.equal(matchesSettings(p('3', 'a', 'toys', 301), settings), false);
-  assert.equal(matchesSettings(p('4', 'a', 'books', 200), settings), false); // kategori ej vald för butik a
-  assert.equal(matchesSettings(p('5', 'c', 'toys', 200), settings), false); // butik ej vald
+test('parseSourceUrl accepts pasted links and text around them', () => {
+  assert.equal(parseSourceUrl('https://www2.hm.com/sv_se/barn.html#top'), 'https://www2.hm.com/sv_se/barn.html');
+  assert.equal(parseSourceUrl('Kolla här: https://www.clasohlson.com/se/Leksaker/c/1908 !'), 'https://www.clasohlson.com/se/Leksaker/c/1908');
+  assert.equal(parseSourceUrl('clasohlson.com/se/Leksaker'), 'https://clasohlson.com/se/Leksaker');
+  assert.equal(parseSourceUrl('leksaker'), null);
+  assert.equal(parseSourceUrl(''), null);
 });
 
-test('buildDeck drops seen, non-matching and duplicate products', () => {
-  const products = [p('1', 'a', 'toys', 150), p('2', 'b', 'books', 150), p('2', 'b', 'books', 150), p('3', 'a', 'toys', 999)];
-  const deck = buildDeck(products, settings, new Set(['1']));
-  assert.deepEqual(deck.map((x) => x.id), ['2']);
+test('siteName strips www prefixes', () => {
+  assert.equal(siteName('https://www2.hm.com/sv_se/barn.html'), 'hm.com');
+  assert.equal(siteName('https://www.clasohlson.com/se/'), 'clasohlson.com');
+});
+
+test('matchesSettings checks source and price range (inclusive)', () => {
+  assert.equal(matchesSettings(p('a', 'x', 100), settings), true);
+  assert.equal(matchesSettings(p('a', 'x', 300), settings), true);
+  assert.equal(matchesSettings(p('a', 'x', 301), settings), false);
+  assert.equal(matchesSettings(p('c', 'x', 200), settings), false); // borttagen källa
+});
+
+test('productsFromCatalog + buildDeck drop seen, out-of-range and duplicate products', () => {
+  const catalog = {
+    a: { fetchedAt: 1, products: [{ title: 'A', price: 150, imageUrl: 'i', productUrl: 'u1' }, { title: 'B', price: 999, imageUrl: 'i', productUrl: 'u2' }] },
+    b: { fetchedAt: 1, products: [{ title: 'A igen', price: 150, imageUrl: 'i', productUrl: 'u1' }, { title: 'C', price: 200, imageUrl: 'i', productUrl: 'u3' }] },
+  };
+  const products = productsFromCatalog(settings.sources, catalog);
+  assert.equal(products.length, 4);
+  const deck = buildDeck(products, settings, new Set(['b|u3']));
+  assert.deepEqual(deck.map((x) => x.productUrl), ['u1']);
 });
 
 test('shuffle keeps all items and does not mutate input', () => {

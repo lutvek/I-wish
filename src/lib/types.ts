@@ -1,49 +1,46 @@
-export type Category = {
+/** En sida (t.ex. en kategori på en butiks hemsida) som föräldern lagt till. */
+export type Source = {
   id: string;
-  name: string;
+  url: string;
+  /** Webbplatsens namn, t.ex. "hm.com". */
+  site: string;
+  addedAt: number;
 };
 
-export type Store = {
-  id: string;
-  name: string;
-  categories: Category[];
-};
-
-export type Product = {
-  /** Unikt över alla butiker, t.ex. "leksakslada:123". */
-  id: string;
-  storeId: string;
-  storeName: string;
-  categoryId: string;
+/** En produkt som lästs från en sida, innan den kopplats till en källa. */
+export type ScrapedProduct = {
   title: string;
   /** Pris i hela kronor. */
   price: number;
-  currency: 'SEK';
   imageUrl: string;
   productUrl: string;
 };
 
+export type ExtractResult = {
+  title: string;
+  products: ScrapedProduct[];
+};
+
+/** Senast hämtade produkter för en källa. */
+export type CatalogEntry = {
+  fetchedAt: number;
+  /** Sidans rubrik, t.ex. "Barnkläder". */
+  title?: string;
+  products: ScrapedProduct[];
+  error?: string;
+};
+
+export type Product = ScrapedProduct & {
+  /** Unikt över alla källor. */
+  id: string;
+  sourceId: string;
+  storeName: string;
+};
+
 export type WishItem = Product & { addedAt: number };
 
-/** Föräldrarnas filter. Kategorier anges som "butiksId:kategoriId". */
 export type Settings = {
-  storeIds: string[];
-  categoryKeys: string[];
+  sources: Source[];
   minPrice: number;
   maxPrice: number;
 };
-
-export type ProductQuery = {
-  categoryIds: string[];
-  minPrice: number;
-  maxPrice: number;
-};
-
-/**
- * En produktkälla per butik. Idag finns bara en mock-implementation; en riktig
- * källa hämtar från en backend som läser butikernas produktflöden (se docs/SPEC.md).
- */
-export interface ProductSource {
-  store: Store;
-  fetchProducts(query: ProductQuery): Promise<Product[]>;
-}
